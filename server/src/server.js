@@ -17,40 +17,10 @@ var validate = require('express-jsonschema').validate;
 var mongo_express = require('mongo-express/lib/middleware');
 // Import the default Mongo Express configuration
 var mongo_express_config = require('mongo-express/config.default.js');
-app.use('/mongo_express', mongo_express(mongo_express_config));
-app.use(bodyParser.text());
-app.use(bodyParser.json());
-app.use(express.static('../client/build'));
-
-/**
- * Resolves a feed item. Internal to the server, since it's synchronous.
- */
-function getFeedItemSync(feedItemId) {
-  var feedItem = readDocument('feedItems', feedItemId);
-  // Resolve 'like' counter.
-  feedItem.likeCounter = feedItem.likeCounter.map((id) => readDocument('users', id));
-  // Assuming a StatusUpdate. If we had other types of FeedItems in the DB, we would
-  // need to check the type and have logic for each type.
-  feedItem.contents.author = readDocument('users', feedItem.contents.author);
-  // Resolve comment author.
-  feedItem.comments.forEach((comment) => {
-    comment.author = readDocument('users', comment.author);
-  });
-  return feedItem;
-}
-
-/**
- * Get the feed data for a particular user.
- */
-function getFeedData(user) {
-  var userData = readDocument('users', user);
-  var feedData = readDocument('feeds', userData.feed);
-  // While map takes a callback, it is synchronous, not asynchronous.
-  // It calls the callback immediately.
-  feedData.contents = feedData.contents.map(getFeedItemSync);
-  // Return FeedData with resolved references.
-  return feedData;
-}
+var MongoDB = require('mongodb');
+ var MongoClient = MongoDB.MongoClient;
+ var ObjectID = MongoDB.ObjectID;
+ var url = 'mongodb://localhost:27017/facebook';
 
 /**
  * Get the user ID from a token. Returns -1 (an invalid ID) if it fails.
@@ -64,12 +34,12 @@ function getUserIdFromToken(authorizationLine) {
     // Convert the UTF-8 string into a JavaScript object.
     var tokenObj = JSON.parse(regularString);
     var id = tokenObj['id'];
-    // Check that id is a number.
-    if (typeof id === 'number') {
+    // Check that id is a string.
+    if (typeof id === 'string') {
       return id;
     } else {
-      // Not a number. Return -1, an invalid ID.
-      return -1;
+      // Not a number. Return "", an invalid ID.
+      return "";
     }
   } catch (e) {
     // Return an invalid ID.
@@ -80,19 +50,13 @@ function getUserIdFromToken(authorizationLine) {
 /**
  * Get the feed data for a particular user.
  */
-app.get('/user/:userid/feed', function(req, res) {
-  var userid = req.params.userid;
-  var fromUser = getUserIdFromToken(req.get('Authorization'));
-  // userid is a string. We need it to be a number.
-  var useridNumber = parseInt(userid, 10);
-  if (fromUser === useridNumber) {
-    // Send response.
-    res.send(getFeedData(userid));
-  } else {
-    // 403: Unauthorized request.
-    res.status(403).end();
-  }
-});
+ MongoClient.connect(url, function(err, db) {
+  // Put everything that uses `app` into this callback function.
+  // from app.use(bodyParser.text());
+  // all the way to
+  // app.listen(3000, ...
+  // Also put all of the helper functions that use mock database
+  // methods like readDocument, writeDocument, ...
 
 /**
  * Adds a new status update to the database.
